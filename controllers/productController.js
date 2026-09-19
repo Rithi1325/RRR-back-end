@@ -73,25 +73,53 @@ export const createProduct = async (req, res) => {
       return res.status(400).json({ message: 'Product image is required' });
     }
 
-    // Parse the name if it's a JSON string
-    let nameObj;
-    try {
-      nameObj = typeof name === 'string' ? JSON.parse(name) : name;
-    } catch (error) {
-      nameObj = { en: name || '', ta: '' };
+    // Parse the name
+    let nameEn = req.body['name[en]'] || '';
+    let nameTa = req.body['name[ta]'] || '';
+    if (name) {
+      if (typeof name === 'object') {
+        nameEn = name.en || nameEn;
+        nameTa = name.ta || nameTa;
+      } else {
+        try {
+          const parsed = JSON.parse(name);
+          nameEn = parsed.en || nameEn;
+          nameTa = parsed.ta || nameTa;
+        } catch {
+          nameEn = name || nameEn;
+        }
+      }
+    }
+
+    // Parse the description
+    let descEn = req.body['description[en]'] || '';
+    let descTa = req.body['description[ta]'] || '';
+    if (description) {
+      if (typeof description === 'object') {
+        descEn = description.en || descEn;
+        descTa = description.ta || descTa;
+      } else {
+        try {
+          const parsed = JSON.parse(description);
+          descEn = parsed.en || descEn;
+          descTa = parsed.ta || descTa;
+        } catch {
+          descEn = description || descEn;
+        }
+      }
     }
 
     const product = new Product({
       name: {
-        en: nameObj.en || '',
-        ta: nameObj.ta || ''
+        en: nameEn,
+        ta: nameTa
       },
       description: {
-        en: description?.en || '',
-        ta: description?.ta || ''
+        en: descEn,
+        ta: descTa
       },
       price: parseFloat(price),
-      category: category.toLowerCase(), // Ensure lowercase for consistency
+      category: category ? category.toLowerCase().trim() : '',
       image: req.file.filename
     });
 
@@ -109,7 +137,9 @@ export const createProduct = async (req, res) => {
     
     // Delete uploaded file if product creation fails
     if (req.file) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {}
     }
     
     res.status(500).json({ message: 'Server error' });
@@ -123,25 +153,79 @@ export const updateProduct = async (req, res) => {
       return res.status(404).json({ message: 'Product not found' });
     }
 
+    const updateData = {};
+
+    // Name
+    let nameEn = req.body['name[en]'];
+    let nameTa = req.body['name[ta]'];
+    if (req.body.name) {
+      if (typeof req.body.name === 'object') {
+        if (req.body.name.en !== undefined) nameEn = req.body.name.en;
+        if (req.body.name.ta !== undefined) nameTa = req.body.name.ta;
+      } else {
+        try {
+          const parsed = JSON.parse(req.body.name);
+          if (parsed.en !== undefined) nameEn = parsed.en;
+          if (parsed.ta !== undefined) nameTa = parsed.ta;
+        } catch {
+          nameEn = req.body.name;
+        }
+      }
+    }
+    if (nameEn !== undefined) updateData['name.en'] = nameEn;
+    if (nameTa !== undefined) updateData['name.ta'] = nameTa;
+
+    // Description
+    let descEn = req.body['description[en]'];
+    let descTa = req.body['description[ta]'];
+    if (req.body.description) {
+      if (typeof req.body.description === 'object') {
+        if (req.body.description.en !== undefined) descEn = req.body.description.en;
+        if (req.body.description.ta !== undefined) descTa = req.body.description.ta;
+      } else {
+        try {
+          const parsed = JSON.parse(req.body.description);
+          if (parsed.en !== undefined) descEn = parsed.en;
+          if (parsed.ta !== undefined) descTa = parsed.ta;
+        } catch {
+          descEn = req.body.description;
+        }
+      }
+    }
+    if (descEn !== undefined) updateData['description.en'] = descEn;
+    if (descTa !== undefined) updateData['description.ta'] = descTa;
+
+    // Price
+    if (req.body.price !== undefined && req.body.price !== '') {
+      updateData.price = parseFloat(req.body.price);
+    }
+
+    // Category
+    if (req.body.category !== undefined && req.body.category !== '') {
+      updateData.category = req.body.category.toLowerCase().trim();
+    }
+
     // If new image is uploaded, delete old image
     if (req.file) {
-      // Delete old image file
       if (product.image) {
         const oldImagePath = path.join('uploads', product.image);
         if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
+          try {
+            fs.unlinkSync(oldImagePath);
+          } catch (err) {
+            console.error('Error deleting old image:', err);
+          }
         }
       }
-      req.body.image = req.file.filename;
+      updateData.image = req.file.filename;
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      { $set: updateData },
       { new: true }
     );
 
-    // Add image URL to response
     const productWithImageUrl = {
       ...updatedProduct.toObject(),
       imageUrl: updatedProduct.image ? `/uploads/${updatedProduct.image}` : null
