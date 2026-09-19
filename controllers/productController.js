@@ -1,6 +1,7 @@
 import Product from '../models/Product.js';
 import fs from 'fs';
 import path from 'path';
+import { uploadToGridFS } from '../config/gridfs.js';
 
 export const getProducts = async (req, res) => {
   try {
@@ -125,6 +126,14 @@ export const createProduct = async (req, res) => {
 
     await product.save();
     
+    if (req.file) {
+      try {
+        await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+      } catch (gridErr) {
+        console.error('GridFS product image upload error:', gridErr);
+      }
+    }
+
     // Add full image URL to response
     const productWithImageUrl = {
       ...product.toObject(),
@@ -218,6 +227,11 @@ export const updateProduct = async (req, res) => {
         }
       }
       updateData.image = req.file.filename;
+      try {
+        await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+      } catch (gridErr) {
+        console.error('GridFS product image update error:', gridErr);
+      }
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(

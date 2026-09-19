@@ -1,8 +1,10 @@
 import PriceList from '../models/PriceList.js';
+import { uploadToGridFS } from '../config/gridfs.js';
 
 export const getLatestPriceList = async (req, res) => {
   try {
-    const priceList = await PriceList.findOne().sort({ effectiveDate: -1, createdAt: -1 });
+    // Sort by createdAt: -1 so the most recently uploaded price list is ALWAYS served
+    const priceList = await PriceList.findOne().sort({ createdAt: -1, _id: -1 });
 
     if (!priceList) {
       return res.status(404).json({ message: 'No price list uploaded yet' });
@@ -31,6 +33,14 @@ export const uploadPriceList = async (req, res) => {
     const effectiveDate = new Date(`${req.body.effectiveDate}T00:00:00.000Z`);
     if (Number.isNaN(effectiveDate.getTime())) {
       return res.status(400).json({ message: 'Effective date is invalid' });
+    }
+
+    // Persist PDF directly into MongoDB Atlas via GridFS so it never gets lost on Render restarts
+    try {
+      await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'application/pdf');
+      console.log(`✅ Uploaded ${req.file.filename} to MongoDB GridFS`);
+    } catch (gridErr) {
+      console.error('Warning: Failed to upload to GridFS:', gridErr);
     }
 
     const priceList = await PriceList.create({
