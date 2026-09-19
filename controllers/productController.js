@@ -68,7 +68,7 @@ export const createProduct = async (req, res) => {
     console.log('Request file:', req.file);
     console.log('Request body:', req.body);
     
-    const { name, description, price, category } = req.body;
+    const { name, description, price, category, purchaseLimit } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ message: 'Product image is required' });
@@ -121,6 +121,7 @@ export const createProduct = async (req, res) => {
       },
       price: parseFloat(price),
       category: category ? category.toLowerCase().trim() : '',
+      purchaseLimit: purchaseLimit !== undefined && purchaseLimit !== '' ? Math.max(0, parseInt(purchaseLimit, 10) || 0) : 0,
       image: req.file.filename
     });
 
@@ -212,6 +213,11 @@ export const updateProduct = async (req, res) => {
     // Category
     if (req.body.category !== undefined && req.body.category !== '') {
       updateData.category = req.body.category.toLowerCase().trim();
+    }
+
+    // Purchase Limit (max qty per user/order; 0 = unlimited)
+    if (req.body.purchaseLimit !== undefined) {
+      updateData.purchaseLimit = req.body.purchaseLimit !== '' ? Math.max(0, parseInt(req.body.purchaseLimit, 10) || 0) : 0;
     }
 
     // If new image is uploaded, delete old image

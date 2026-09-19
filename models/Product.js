@@ -12,6 +12,7 @@ const productSchema = new mongoose.Schema({
   price: { type: Number, required: true },
   category: { type: String, required: true },
   image: { type: String, required: true },
+  purchaseLimit: { type: Number, default: 0 }, // 0 = unlimited, >0 = max quantity per order/user
   isActive: { type: Boolean, default: true }
 }, {
   timestamps: true
