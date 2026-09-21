@@ -126,14 +126,6 @@ export const createProduct = async (req, res) => {
     });
 
     await product.save();
-    
-    if (req.file) {
-      try {
-        await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
-      } catch (gridErr) {
-        console.error('GridFS product image upload error:', gridErr);
-      }
-    }
 
     // Add full image URL to response
     const productWithImageUrl = {
@@ -152,7 +144,7 @@ export const createProduct = async (req, res) => {
       } catch (err) {}
     }
     
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
@@ -233,11 +225,6 @@ export const updateProduct = async (req, res) => {
         }
       }
       updateData.image = req.file.filename;
-      try {
-        await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
-      } catch (gridErr) {
-        console.error('GridFS product image update error:', gridErr);
-      }
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(
@@ -254,7 +241,7 @@ export const updateProduct = async (req, res) => {
     res.json(productWithImageUrl);
   } catch (error) {
     console.error('Error updating product:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
