@@ -2,6 +2,7 @@ import Product from '../models/Product.js';
 import fs from 'fs';
 import path from 'path';
 import { uploadToCloudinary, isCloudinaryConfigured } from '../config/cloudinary.js';
+import { uploadToGridFS, deleteFromGridFS } from '../config/gridfs.js';
 
 export const getProducts = async (req, res) => {
   try {
@@ -114,7 +115,7 @@ export const createProduct = async (req, res) => {
       }
     }
 
-    // Determine image storage: Cloudinary cloud storage or local disk
+    // Determine image storage: Cloudinary cloud storage or MongoDB Atlas GridFS
     let imageValue = req.file.filename;
 
     if (isCloudinaryConfigured()) {
@@ -127,8 +128,22 @@ export const createProduct = async (req, res) => {
         // Delete local temporary file since it is securely stored on Cloudinary
         try { fs.unlinkSync(req.file.path); } catch (e) {}
       } catch (cloudErr) {
-        console.error('⚠️ Cloudinary upload failed, falling back to local file:', cloudErr.message);
+        console.error('⚠️ Cloudinary upload failed, falling back to MongoDB GridFS:', cloudErr.message);
         imageValue = req.file.filename;
+        try {
+          await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+          console.log(`✅ Uploaded ${req.file.filename} to MongoDB GridFS (fallback)`);
+        } catch (gridErr) {
+          console.error('Warning: Failed to upload to GridFS:', gridErr);
+        }
+      }
+    } else {
+      // Cloudinary not configured -> ALWAYS persist into MongoDB Atlas via GridFS
+      try {
+        await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+        console.log(`✅ Uploaded product image ${req.file.filename} to MongoDB GridFS`);
+      } catch (gridErr) {
+        console.error('⚠️ Failed to upload product image to GridFS:', gridErr);
       }
     }
 
@@ -247,11 +262,27 @@ export const updateProduct = async (req, res) => {
 
           try { fs.unlinkSync(req.file.path); } catch (e) {}
         } catch (cloudErr) {
-          console.error('⚠️ Cloudinary upload failed, using local file:', cloudErr.message);
+          console.error('⚠️ Cloudinary upload failed, falling back to MongoDB GridFS:', cloudErr.message);
           imageValue = req.file.filename;
+          try {
+            await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+            console.log(`✅ Uploaded updated image ${req.file.filename} to MongoDB GridFS (fallback)`);
+          } catch (gridErr) {
+            console.error('Warning: Failed to upload to GridFS:', gridErr);
+          }
         }
       } else {
-        if (product.image && !product.image.startsWith('http')) {
+        // Cloudinary not configured -> ALWAYS persist new image into MongoDB Atlas via GridFS
+        try {
+          await uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype || 'image/jpeg');
+          console.log(`✅ Uploaded updated product image ${req.file.filename} to MongoDB GridFS`);
+        } catch (gridErr) {
+          console.error('⚠️ Failed to upload updated image to GridFS:', gridErr);
+        }
+
+        // Clean up previous image from GridFS and local disk if it changed
+        if (product.image && !product.image.startsWith('http') && product.image !== req.file.filename) {
+          deleteFromGridFS(product.image).catch(() => {});
           const oldImagePath = path.join('uploads', product.image);
           if (fs.existsSync(oldImagePath)) {
             try { fs.unlinkSync(oldImagePath); } catch (e) {}
@@ -286,7 +317,7 @@ export const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (product && product.image && !product.image.startsWith('http')) {
-      // Delete local image file if present
+      deleteFromGridFS(product.image).catch(() => {});
       const imagePath = path.join('uploads', product.image);
       if (fs.existsSync(imagePath)) {
         try { fs.unlinkSync(imagePath); } catch (e) {}
